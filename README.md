@@ -1,52 +1,63 @@
-# 🍯 Honeypot & Honeynet as a Service
+# HTTP-Honeypot Microservice
 
-> Lernprojekt für Softwarearchitektur — FH Sem. 4  
 > Simuliert eine verwundbare Webanwendung, loggt Angreifer-Verhalten und analysiert Angriffsmuster.
+> Das Projekt implementiert einen einzelnen Honeypot, kein vollständiges Honeynet.
 
 ---
 
-## ⚡ Quickstart
+## Quickstart
 
 ```bash
 # 1. Honeypot starten
-python honeypot.py
+python3 honeypot.py
 
 # 2. Angriffe simulieren (neues Terminal)
-python attacker_sim.py
+python3 attacker_sim.py
 
 # 3. Logs auswerten
-python log_analyzer.py
+python3 log_analyzer.py
 ```
 
-Dann im Browser öffnen: `http://127.0.0.1:8080/stats`
+Dann im Browser öffnen:
+
+- Status: `http://127.0.0.1:8080/health`
+- Statistiken: `http://127.0.0.1:8080/stats`
 
 ---
 
-## 📁 Projektstruktur
+## Projektstruktur
 
 ```
 honeypot/
 ├── honeypot.py        # Honeypot-Server (HTTP, Port 8080)
 ├── attacker_sim.py    # Angriffs-Simulator für Tests
 ├── log_analyzer.py    # Log-Auswertung & Threat Report
+├── tests/             # Automatische Tests
 ├── honeypot.log       # Wird automatisch erstellt (JSON-Lines)
 └── README.md          # Diese Datei
 ```
 
 ---
 
-## 🔧 Voraussetzungen
+## Voraussetzungen
 
 - Python 3.10+ (keine externen Packages nötig — nur Stdlib)
 - Windows / macOS / Linux
 
+Tests ausführen:
+
+```bash
+python3 -m unittest discover -s tests -v
+```
+
 ---
 
-## 🌐 Endpunkte
+## Endpunkte
 
 | Methode | Pfad             | Beschreibung                        |
 |---------|------------------|-------------------------------------|
 | GET     | `/`              | App-Info (Fake-Server-Version)      |
+| GET     | `/health`        | Status des Microservices            |
 | GET     | `/api/customers` | Fake-Kundendaten (JSON)             |
 | GET     | `/api/admin`     | Fake-Admin-Credentials (Köder)      |
 | GET     | `/api/config`    | Fake-Konfiguration mit DB-Keys      |
@@ -56,7 +67,7 @@ honeypot/
 
 ---
 
-## 🚨 Erkannte Angriffs-Typen
+## Erkannte Angriffs-Typen
 
 | Typ                 | Beispiel-Payload                          |
 |---------------------|-------------------------------------------|
@@ -64,20 +75,21 @@ honeypot/
 | XSS                 | `<script>alert(1)</script>`              |
 | Path Traversal      | `/../../../etc/passwd` / `%2e%2e`        |
 | Command Injection   | `; cat /etc/shadow`                       |
-| Brute Force Login   | Wiederholte POST-Requests auf `/login`   |
+| Brute Force Login   | 3 Loginversuche pro IP in 30 Sekunden    |
 
 ---
 
-## 📊 Log-Format
+## Log-Format
 
 Jeder Request wird als JSON-Zeile in `honeypot.log` geschrieben:
+Die Angriffspayloads werden erkannt und protokolliert, aber nicht ausgeführt.
 
 ```json
 {
   "timestamp": "2025-06-08T10:23:45Z",
   "ip": "127.0.0.1",
   "method": "GET",
-  "path": "/api/customers?id=1 OR 1=1--",
+  "path": "/api/customers?id=1+OR+1%3D1--",
   "user_agent": "python-attacker-sim/1.0",
   "body_snippet": null,
   "attack_types": ["sql_injection"]
@@ -86,19 +98,29 @@ Jeder Request wird als JSON-Zeile in `honeypot.log` geschrieben:
 
 ---
 
-## ⚠️ Sicherheitshinweis
+## Konfiguration
 
-Dieses Projekt ist **ausschließlich für Lern- und Testzwecke** gedacht.
+Optional können folgende Umgebungsvariablen gesetzt werden:
 
-- ✅ Nur auf `127.0.0.1` (localhost) betreiben
-- ✅ Isolierte VM oder Docker-Netzwerk verwenden
-- ❌ Niemals auf einem öffentlich erreichbaren Server ohne Netzwerk-Segmentierung
-- ❌ Keine echten Produktionsdaten in der Nähe
+- `HONEYPOT_HOST` – Host, standardmäßig `127.0.0.1`
+- `HONEYPOT_PORT` – Port, standardmäßig `8080`
+- `HONEYPOT_LOG_FILE` – Pfad zur Logdatei
 
 ---
 
-## 📖 Quellen
+## Sicherheitshinweis
 
-- Viresh Garg — *Honeypot and Honeynet as a Service* (Medium, 2024)
+Dieses Projekt ist **ausschließlich für Lern- und Testzwecke** gedacht.
+
+- Nur auf `127.0.0.1` (localhost) betreiben
+- Isolierte VM oder Docker-Netzwerk verwenden
+- Niemals auf einem öffentlich erreichbaren Server ohne Netzwerk-Segmentierung
+- Keine echten Produktionsdaten in der Nähe
+
+---
+
+## Quellen
+
+- [Viresh Garg — Honeypot and Honeynet as a Service](https://medium.com/@viresh.garg/honeypot-and-honeynet-as-a-service-a-comprehensive-cybersecurity-strategy-dc01eab24848) (Medium, 2024)
 - OWASP — Testing for SQL Injection (WSTG-INPV-05)
 - Python Docs — `http.server` Standard Library
