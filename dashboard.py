@@ -120,6 +120,8 @@ def build_stats(entries: list[dict]) -> dict:
 HTML = r"""<!DOCTYPE html>
 <html lang="de">
 <head>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Honeypot Dashboard</title>
@@ -556,7 +558,7 @@ HTML = r"""<!DOCTYPE html>
 </header>
 
 <main>
-
+  
   <!-- KPIs -->
   <div class="kpi-row">
     <div class="kpi" style="--accent: var(--cyan)">
@@ -579,6 +581,14 @@ HTML = r"""<!DOCTYPE html>
       <div class="kpi-value" id="kpi-top-type" style="font-size:1rem;padding-top:6px">—</div>
       <div class="kpi-sub" id="kpi-top-count">&nbsp;</div>
     </div>
+  </div>
+
+  <div class="card" style="grid-column: 1 / -1;">
+    <div class="card-header">
+    <span class="card-title">Live Angriffs-Karte</span>
+    <span class="card-badge">Geo-IP Tracking</span>
+    </div>
+    <div id="map" style="height: 350px; width: 100%;"></div>
   </div>
 
   <!-- Timeline -->
@@ -638,6 +648,56 @@ HTML = r"""<!DOCTYPE html>
 <footer id="footer-ts">Letzte Aktualisierung: —</footer>
 
 <script>
+// Karte initialisieren (Zentriert auf Europa/Welt)
+const map = L.map('map').setView([20, 0], 2);
+
+// Dark-Mode Karten-Tiles laden (CartoDB)
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+  subdomains: 'abcd',
+  maxZoom: 20
+}).addTo(map);
+
+// Layer für die Marker, damit wir sie bei jedem Refresh löschen können
+const markerLayer = L.layerGroup().addTo(map);
+
+function renderMap(d) {
+  markerLayer.clearLayers(); 
+
+  const dataToDraw = d.recent_requests || d.recent_attacks || [];
+  
+  if (dataToDraw.length > 0) {
+      console.log("Details des ersten Eintrags:", dataToDraw[0]);
+  }
+  
+  let drawnCount = 0;
+
+  dataToDraw.forEach(atk => {
+    // Wir prüfen nur noch, ob 'geo' da ist und ob lat/lon nicht null sind
+    if (atk.geo && atk.geo.lat != null && atk.geo.lon != null) {
+      
+      const isAttack = (atk.attack_types && atk.attack_types.length > 0);
+      const color = isAttack ? '#f05a5a' : '#38d9c0';
+      const typeText = isAttack ? atk.attack_types.join(', ') : 'Normale Anfrage';
+      
+      L.circleMarker([atk.geo.lat, atk.geo.lon], {
+        radius: 8,
+        fillColor: color,
+        color: color,
+        weight: 2,
+        opacity: 0.9,
+        fillOpacity: 0.6
+      })
+      .bindPopup(`<b>IP:</b> ${atk.ip}<br><b>Land:</b> ${atk.geo.country || 'Unbekannt'}<br><b>Typ:</b> ${typeText}`)
+      .addTo(markerLayer);
+
+      drawnCount++;
+    }
+  });
+
+  console.log(`Es wurden ${drawnCount} Marker auf der Karte platziert.`);
+}
+
 const PILL = {
   sql_injection:   'pill-sql',
   xss:             'pill-xss',
@@ -862,13 +922,14 @@ function renderFeed(d) {
 // ── Fetch & Render ─────────────────────────────────────────────────────────
 async function fetchData() {
   try {
-    const res  = await fetch('/api/data');
+    const res  = await fetch('/api/data?t=' + Date.now()); 
     const data = await res.json();
     renderKPIs(data);
     renderAtkBars(data);
     renderIPTable(data);
     renderTimeline(data);
     renderFeed(data);
+    renderMap(data); // Karte updaten
     document.getElementById('footer-ts').textContent =
       'Letzte Aktualisierung: ' + new Date().toLocaleTimeString('de-AT');
   } catch (err) {
@@ -898,9 +959,12 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
         pass  # suppress default access log
 
     def do_GET(self):
-        if self.path == "/" or self.path == "/index.html":
+        # Schneidet alles ab dem '?' ab (ignoriert also den t=... Parameter)
+        clean_path = self.path.split('?')[0]
+
+        if clean_path == "/" or clean_path == "/index.html":
             self._serve_html()
-        elif self.path == "/api/data":
+        elif clean_path == "/api/data":
             self._serve_json()
         else:
             self.send_response(404)

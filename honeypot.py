@@ -17,6 +17,7 @@ import time
 from collections import Counter, defaultdict, deque
 from datetime import UTC, datetime
 from urllib.parse import unquote_plus, urlparse
+import urllib.request
 
 
 #Logging Setup
@@ -149,6 +150,22 @@ class HoneypotHandler(http.server.BaseHTTPRequestHandler):
     def log_request_details(self, method: str, body: str = ""):
         """Strukturiertes Logging aller relevanten Request-Infos."""
         ip = self.client_address[0]
+        
+        # TEST-MODUS ANFANG
+        # Wenn der Angriff von uns selbst kommt, simulieren wir IPs aus aller Welt
+        if ip == "127.0.0.1":
+            import random
+            test_ips = [
+                "8.8.8.8",        # USA (Google)
+                "1.1.1.1",        # Australien (Cloudflare)
+                "193.99.144.80",  # Deutschland
+                "210.130.120.40", # Japan
+                "177.43.255.255", # Brasilien
+                "196.25.255.250"  # Südafrika
+            ]
+            ip = random.choice(test_ips)
+        # TEST-MODUS ENDE
+        
         path = self.path
         user_agent = self.headers.get("User-Agent", "unknown")
         attack_types = detect_attack_patterns(path, body)
@@ -158,6 +175,9 @@ class HoneypotHandler(http.server.BaseHTTPRequestHandler):
             if tracker.record_login_attempt(ip):
                 attack_types.append("login_bruteforce")
 
+        # Geo-Daten abrufen
+        geo_data = get_geo_info(ip)
+        
         entry = {
             "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
             "ip": ip,
@@ -165,7 +185,8 @@ class HoneypotHandler(http.server.BaseHTTPRequestHandler):
             "path": path,
             "user_agent": user_agent,
             "body_snippet": body[:200] if body else None,
-            "attack_types": attack_types,
+            "attack_types": attack_types, 
+            "geo": geo_data #Geo-Daten ins Log schreiben
         }
 
         tracker.record(ip, entry)
@@ -269,6 +290,31 @@ Verfügbare Endpunkte (für Tests):
         print("\nFinale Statistiken:")
         stats = tracker.get_stats()
         print(json.dumps(stats, indent=2))
+        
+# Cache, damit wir dieselbe IP nicht 100x abfragen und geblockt werden
+GEO_CACHE = {}
+
+def get_geo_info(ip: str) -> dict:
+    # Lokale IPs ignorieren
+    if ip == "127.0.0.1" or ip.startswith("192.168.") or ip.startswith("10."):
+        return {"country": "Localhost", "lat": 47.2, "lon": 15.1} # Z.B. Steiermark als Fallback
+
+    if ip in GEO_CACHE:
+        return GEO_CACHE[ip]
+
+    try:
+        # ip-api.com liefert JSON mit Land, Lat und Lon
+        url = f"http://ip-api.com/json/{ip}?fields=country,lat,lon"
+        req = urllib.request.Request(url, headers={'User-Agent': 'Honeypot-Project/1.0'})
+        with urllib.request.urlopen(req, timeout=2) as response:
+            data = json.loads(response.read())
+            if data:
+                GEO_CACHE[ip] = data
+                return data
+    except Exception as e:
+        pass # Fehler ignorieren, dann gibt es halt keine Karte für diese IP
+
+    return {}
 
 
 if __name__ == "__main__":
