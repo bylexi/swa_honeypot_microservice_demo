@@ -15,6 +15,8 @@ import threading
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 
+from threat_scoring import build_ip_risk_profiles
+
 LOG_FILE = os.getenv("HONEYPOT_LOG_FILE", "honeypot.log")
 HOST = os.getenv("DASHBOARD_HOST", "127.0.0.1")
 PORT = int(os.getenv("DASHBOARD_PORT", "8081"))
@@ -47,6 +49,7 @@ def build_stats(entries: list[dict]) -> dict:
             "unique_ips": 0,
             "attack_types": {},
             "top_ips": [],
+            "risk_profiles": [],
             "recent_attacks": [],
             "timeline": [],
         }
@@ -91,11 +94,18 @@ def build_stats(entries: list[dict]) -> dict:
         for b in all_buckets[-30:]
     ]
 
+    risk_by_ip = {
+        profile["ip"]: profile
+        for profile in build_ip_risk_profiles(entries)
+    }
+
     top_ips = [
         {
             "ip": ip,
             "requests": count,
             "attacks": attacks_by_ip[ip],
+            "score": risk_by_ip[ip]["score"],
+            "level": risk_by_ip[ip]["level"],
         }
         for ip, count in ip_counter.most_common(8)
     ]
@@ -106,6 +116,7 @@ def build_stats(entries: list[dict]) -> dict:
         "unique_ips": len(ip_counter),
         "attack_types": dict(attack_type_counter.most_common()),
         "top_ips": top_ips,
+        "risk_profiles": build_ip_risk_profiles(entries, limit=8),
         "recent_attacks": recent_attacks[-25:][::-1],   # newest first
         "timeline": timeline,
         "log_file": LOG_FILE,
@@ -443,6 +454,28 @@ HTML = r"""<!DOCTYPE html>
     background: rgba(56, 217, 192, 0.1);
     color: var(--cyan);
     border-color: rgba(56, 217, 192, 0.2);
+  }
+
+  .risk-score {
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  .risk-info {
+    color: var(--cyan);
+  }
+
+  .risk-low {
+    color: var(--blue);
+  }
+
+  .risk-medium {
+    color: var(--amber);
+  }
+
+  .risk-high,
+  .risk-critical {
+    color: var(--red);
   }
 
   /* ── Timeline Chart ──────────────────────────────────────────────────── */
@@ -788,19 +821,21 @@ function renderIPTable(d) {
   }
 
   const rows = d.top_ips.map(r => {
+    const riskClass = `risk-${String(r.level || 'INFO').toLowerCase()}`;
     const tag = r.attacks > 0
-      ? `<span class="ip-tag">${r.attacks} Angriffe</span>`
-      : `<span class="ip-tag clean">clean</span>`;
+      ? `<span class="ip-tag ${riskClass}">${r.level}</span>`
+      : `<span class="ip-tag clean ${riskClass}">${r.level}</span>`;
     return `<tr>
       <td class="ip">${r.ip}</td>
       <td>${r.requests}</td>
       <td>${tag}</td>
+      <td class="risk-score ${riskClass}">${r.score}</td>
     </tr>`;
   }).join('');
 
   wrap.innerHTML = `<table class="ip-table">
     <thead><tr>
-      <th>IP-Adresse</th><th>Requests</th><th>Status</th>
+      <th>IP-Adresse</th><th>Requests</th><th>Risiko</th><th>Score</th>
     </tr></thead>
     <tbody>${rows}</tbody>
   </table>`;

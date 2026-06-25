@@ -8,6 +8,8 @@ import json
 import sys
 from collections import Counter, defaultdict
 
+from threat_scoring import build_ip_risk_profiles
+
 
 def analyze(logfile="honeypot.log"):
     entries = []
@@ -72,6 +74,18 @@ def analyze(logfile="honeypot.log"):
         atk_count = len(attacks_by_ip[ip])
         flag = "[ANGRIFF]" if atk_count > 0 else "         "
         print(f"  {flag} {ip:<18} {count} Requests, {atk_count} Angriffe")
+    print()
+
+    print(f"Risk-Scoring nach IP")
+    print(sep)
+    for profile in build_ip_risk_profiles(entries, limit=5):
+        types = ", ".join(profile["attack_types"].keys()) or "keine"
+        print(
+            f"  {profile['level']:<8} {profile['ip']:<18} "
+            f"Score {profile['score']:>2}  "
+            f"{profile['requests']} Requests, {profile['attacks']} Angriffe"
+        )
+        print(f"           Typen: {types}")
     print()
 
     print(f"Meist angefragte Pfade")

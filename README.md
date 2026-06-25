@@ -30,6 +30,8 @@ Dann im Browser öffnen:
 ```
 honeypot/
 ├── honeypot.py        # Honeypot-Server (HTTP, Port 8080)
+├── dashboard.py       # Live-Dashboard mit Geo-IP-Karte
+├── threat_scoring.py  # Risk-Scoring pro IP-Adresse
 ├── attacker_sim.py    # Angriffs-Simulator für Tests
 ├── log_analyzer.py    # Log-Auswertung & Threat Report
 ├── tests/             # Automatische Tests
@@ -76,6 +78,22 @@ python3 -m unittest discover -s tests -v
 | Path Traversal      | `/../../../etc/passwd` / `%2e%2e`        |
 | Command Injection   | `; cat /etc/shadow`                       |
 | Brute Force Login   | 3 Loginversuche pro IP in 30 Sekunden    |
+
+---
+
+## Erweiterung: Risk-Scoring
+
+Zusätzlich zur reinen Angriffserkennung bewertet das Projekt jede IP-Adresse
+mit einem Risiko-Score:
+
+- Jeder Angriffstyp hat ein Gewicht, z.B. `command_injection` und
+  `login_bruteforce` zählen stärker als XSS.
+- Viele Requests derselben IP können einen kleinen Zusatzpunkt-Bonus geben.
+- Aus dem Score wird eine Risikostufe berechnet:
+  `INFO`, `LOW`, `MEDIUM`, `HIGH` oder `CRITICAL`.
+
+Das Dashboard zeigt Score und Risikostufe in der Top-IP-Tabelle. Der
+`log_analyzer.py` gibt zusätzlich einen Abschnitt `Risk-Scoring nach IP` aus.
 
 ---
 
