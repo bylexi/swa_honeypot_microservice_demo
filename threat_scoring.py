@@ -1,8 +1,3 @@
-"""
-Threat-Scoring für Honeypot-Logs.
-
-Bewertet IP-Adressen nach Angriffstypen und Request-Volumen.
-"""
 
 from collections import Counter
 
